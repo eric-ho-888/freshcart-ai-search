@@ -1,0 +1,16 @@
+name: freshcart_ai
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - fastapi==0.110.0
+    - uvicorn==0.28.0
+    - psycopg2-binary==2.9.9
+    - redis==5.0.3
+    - sentence-transformers==2.5.1
+    - streamlit==1.32.2
+    - requests==2.31.0
+    - pandas==2.2.1
