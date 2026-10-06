@@ -1,7 +1,65 @@
-# generate_dataset.py
-import pandas as pd
-from sentence_transformers import SentenceTransformer
 import json
+import os
+
+import pandas as pd
+import psycopg2
+from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
+
+load_dotenv()
+
+
+def save_to_database(df):
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        database=os.getenv("POSTGRES_DB", "postgres"),
+        user=os.getenv("POSTGRES_USER", "postgres"),
+        password=os.getenv("POSTGRES_PASSWORD", "password"),
+        port=int(os.getenv("POSTGRES_PORT", 5432)),
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    product_id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    price NUMERIC(10, 2) NOT NULL,
+                    stock_quantity INTEGER NOT NULL,
+                    rating REAL NOT NULL,
+                    description TEXT NOT NULL,
+                    description_vector vector(384) NOT NULL
+                )
+            """)
+            cur.executemany("""
+                INSERT INTO products (
+                    product_id, name, category, price, stock_quantity, rating,
+                    description, description_vector
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)
+                ON CONFLICT (product_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    category = EXCLUDED.category,
+                    price = EXCLUDED.price,
+                    stock_quantity = EXCLUDED.stock_quantity,
+                    rating = EXCLUDED.rating,
+                    description = EXCLUDED.description,
+                    description_vector = EXCLUDED.description_vector
+            """, [
+                (
+                    row.product_id, row.name, row.category, row.price,
+                    row.stock_quantity, row.rating, row.description,
+                    row.description_vector,
+                )
+                for row in df.itertuples(index=False)
+            ])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 # 1. Create a small, highly semantic sample dataset with 100 products.
 products_list = [
@@ -142,4 +200,6 @@ df['description_vector'] = [json.dumps(vec.tolist()) for vec in embeddings]
 
 # 5. Save out for the students
 df.to_csv('products_precalculated.csv', index=False)
-print("✅ Success! 'products_precalculated.csv' generated with vector embeddings.")
+save_to_database(df)
+print(f"✅ Success! Generated embeddings and seeded {len(df)} products into PostgreSQL.")
+print("✅ 'products_precalculated.csv' generated with vector embeddings.")
